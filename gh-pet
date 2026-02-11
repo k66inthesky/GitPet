@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+BIN="$ROOT/gh-pet-bin"
+
+if [ ! -x "$BIN" ] || [ "$ROOT/main.go" -nt "$BIN" ] || [ "$ROOT/go.mod" -nt "$BIN" ]; then
+  (cd "$ROOT" && go build -o "$BIN")
+fi
+
+exec "$BIN" "$@"
