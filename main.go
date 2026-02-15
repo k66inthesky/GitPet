@@ -227,7 +227,7 @@ func runInstallHook() error {
 
 	hookContent := fmt.Sprintf(`#!/usr/bin/env bash
 # GitPet post-commit hook — auto-feed & show status
-"%s" post-commit 2>/dev/null &
+"%s" post-commit
 `, exePath)
 
 	if err := os.MkdirAll(hookDir, 0o755); err != nil {
