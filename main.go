@@ -101,6 +101,12 @@ func main() {
 		if err := runInstallHook(); err != nil {
 			fatal(err)
 		}
+	case "prompt":
+		runPrompt()
+	case "install-prompt":
+		if err := runInstallPrompt(); err != nil {
+			fatal(err)
+		}
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -112,7 +118,7 @@ func main() {
 func usage() {
 	fmt.Println("GitPet (gh extension)")
 	fmt.Println("Usage: gh pet <command>")
-	fmt.Println("Commands: feed | status | suggest | post-commit | install-hook")
+	fmt.Println("Commands: feed | status | suggest | post-commit | install-hook | prompt | install-prompt")
 }
 
 func runFeed() error {
@@ -164,6 +170,115 @@ func runFeed() error {
 	}
 	fmt.Printf("Mood: %d | Kindness: %d | Logic Shards: %d\n", state.Mood, state.Kindness, state.Logic)
 	fmt.Printf("Evolution: %s\n", state.Evolution)
+	return nil
+}
+
+func runPrompt() {
+	state, _ := loadState()
+	if state.Evolution == "" {
+		state.Evolution = "Lonely"
+	}
+	// Compact one-line prompt: 🐾Pioneer(◕‿◕)██░░░░░░░░
+	face := promptFace(state.Mood)
+	bar := promptBar(state.Mood)
+	fmt.Printf("🐾%s%s%s", face, bar, state.Evolution)
+}
+
+func promptFace(mood int) string {
+	switch {
+	case mood >= 80:
+		return "ᐛ "
+	case mood >= 60:
+		return "◕‿◕ "
+	case mood >= 40:
+		return "•‿• "
+	case mood >= 20:
+		return "•_• "
+	case mood > 0:
+		return "._. "
+	default:
+		return ";_; "
+	}
+}
+
+func promptBar(mood int) string {
+	filled := mood / 20
+	if filled > 5 {
+		filled = 5
+	}
+	empty := 5 - filled
+	return strings.Repeat("█", filled) + strings.Repeat("░", empty) + " "
+}
+
+func runInstallPrompt() error {
+	// Get the absolute path to gh-pet binary
+	exePath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("cannot find GitPet binary: %w", err)
+	}
+	exePath, _ = filepath.Abs(exePath)
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+
+	// Detect shell
+	shell := os.Getenv("SHELL")
+	var rcFile string
+	var snippet string
+
+	gitpetPrompt := fmt.Sprintf(`
+# GitPet prompt — shows pet status in your terminal
+gitpet_prompt() {
+  local pet
+  pet=$("%s" prompt 2>/dev/null)
+  if [[ -n "$pet" ]]; then
+    echo "$pet "
+  fi
+}
+`, exePath)
+
+	if strings.Contains(shell, "zsh") {
+		rcFile = filepath.Join(home, ".zshrc")
+		snippet = gitpetPrompt + `setopt PROMPT_SUBST
+RPROMPT='$(gitpet_prompt)'
+`
+	} else {
+		rcFile = filepath.Join(home, ".bashrc")
+		snippet = gitpetPrompt + `PS1='$(gitpet_prompt)'"$PS1"
+`
+	}
+
+	// Check if already installed
+	if data, err := os.ReadFile(rcFile); err == nil {
+		if strings.Contains(string(data), "GitPet prompt") {
+			fmt.Printf("%s✓ GitPet prompt already installed in %s%s\n", colorGreen, rcFile, colorReset)
+			return nil
+		}
+	}
+
+	f, err := os.OpenFile(rcFile, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if _, err := f.WriteString(snippet); err != nil {
+		return err
+	}
+
+	fmt.Printf("%s✓ GitPet prompt installed in %s%s\n", colorGreen, rcFile, colorReset)
+	if strings.Contains(shell, "zsh") {
+		fmt.Println("  GitPet will show in RPROMPT (right side)")
+	} else {
+		fmt.Println("  GitPet will show at the start of your prompt")
+	}
+	fmt.Println("  Run: source", rcFile)
+	fmt.Println()
+	fmt.Print("  Preview: ")
+	runPrompt()
+	fmt.Println()
 	return nil
 }
 
