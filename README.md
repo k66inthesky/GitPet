@@ -99,3 +99,4 @@ Optional headers:
 
 - Pet state is stored at `~/.config/gh/gh-pet.json`.
 - `feed` uses your GitHub events (last 7 days) plus local `git status/diff` for Thought Fragments.
+
