@@ -340,19 +340,16 @@ func renderStatus(state PetState) string {
 }
 
 func renderArt(state PetState) string {
-	if state.Evolution == "Lonely" {
-		return "(._.)\n /|\\\n / \\\nThe Cache is quiet..."
-	}
 	art := artFor(state.Evolution)
 	special := ""
 	if state.Evolution == "Pioneer" && rand.Intn(5) == 0 {
-		special = "\n🗝️ Found a tiny treasure chest!"
+		special = "\n🗝️  Found a tiny treasure chest!"
 	}
 	if state.Evolution == "Guardian" {
-		special = "\n🛡️ Shielding your logs: You got this."
+		special = "\n🛡️  Shielding your logs."
 	}
 	if state.Evolution == "Bard" {
-		special = fmt.Sprintf("\n📜 Proverb: %s", dailyProverb())
+		special = fmt.Sprintf("\n📜 %s", dailyProverb())
 	}
 	return art + special
 }
@@ -360,15 +357,61 @@ func renderArt(state PetState) string {
 func artFor(evolution string) string {
 	switch evolution {
 	case "Pioneer":
-		return " /-\\\n(o o)\n/|^|\\\n / \\\n  |"
+		return "" +
+			"    ╭───╮\n" +
+			"   (⊙ ⊙ )\n" +
+			"  ╭┤ ▽ ├╮  ⛏️\n" +
+			"  │╰───╯│\n" +
+			"  ╰┬───┬╯\n" +
+			"   │   │\n" +
+			"   ╰───╯"
 	case "Guardian":
-		return "[===]\n(o_o)\n/|=|\\\n / \\"
+		return "" +
+			"   ╔═══╗\n" +
+			"   ║ ⊕ ║\n" +
+			"  ╭╨───╨╮\n" +
+			"  (◉_◉ )\n" +
+			"  ├┤═══├┤ 🛡️\n" +
+			"  ╰┬───┬╯\n" +
+			"   │   │\n" +
+			"   ╰───╯"
 	case "Bard":
-		return " ~~~\n(o o)\n/|~|\\\n / \\\n (_)"
+		return "" +
+			"   ♪ ♫ ♪\n" +
+			"   ╭~~~╮\n" +
+			"  (◕ ◡ ◕)\n" +
+			"  ╭┤ ♪ ├╮  📜\n" +
+			"  │╰~~~╯│\n" +
+			"  ╰┬───┬╯\n" +
+			"   │   │\n" +
+			"   ╰─♪─╯"
 	case "Void":
-		return " . .\n( . )\n . ."
+		return "" +
+			"    · · ·\n" +
+			"   ╭─·─╮\n" +
+			"  ( ·_· )\n" +
+			"  ┤     ├\n" +
+			"   · · ·\n" +
+			"    ···"
+	case "Lonely":
+		return "" +
+			"   ╭───╮\n" +
+			"  (；_；)\n" +
+			"  ╭┤   ├╮\n" +
+			"  │╰───╯│\n" +
+			"  ╰┬───┬╯  💤\n" +
+			"   │   │\n" +
+			"   ╰───╯\n" +
+			"  zzz..."
 	default:
-		return "(o_o)\n /|\\\n / \\"
+		return "" +
+			"   ╭───╮\n" +
+			"  (o_o )\n" +
+			"  ╭┤   ├╮\n" +
+			"  │╰───╯│\n" +
+			"  ╰┬───┬╯\n" +
+			"   │   │\n" +
+			"   ╰───╯"
 	}
 }
 

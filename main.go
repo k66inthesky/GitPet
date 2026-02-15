@@ -61,10 +61,15 @@ type CreatePayload struct {
 
 const (
 	configFileName = "gh-pet.json"
+	colorRed       = "\x1b[31m"
+	colorGreen     = "\x1b[32m"
 	colorYellow    = "\x1b[33m"
 	colorBlue      = "\x1b[34m"
 	colorMagenta   = "\x1b[35m"
+	colorCyan      = "\x1b[36m"
 	colorGrey      = "\x1b[37m"
+	colorBold      = "\x1b[1m"
+	colorDim       = "\x1b[2m"
 	colorReset     = "\x1b[0m"
 )
 
@@ -88,6 +93,14 @@ func main() {
 		if err := runSuggest(); err != nil {
 			fatal(err)
 		}
+	case "post-commit":
+		if err := runPostCommit(); err != nil {
+			fatal(err)
+		}
+	case "install-hook":
+		if err := runInstallHook(); err != nil {
+			fatal(err)
+		}
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -99,7 +112,7 @@ func main() {
 func usage() {
 	fmt.Println("GitPet (gh extension)")
 	fmt.Println("Usage: gh pet <command>")
-	fmt.Println("Commands: feed | status | suggest")
+	fmt.Println("Commands: feed | status | suggest | post-commit | install-hook")
 }
 
 func runFeed() error {
@@ -154,6 +167,92 @@ func runFeed() error {
 	return nil
 }
 
+func runPostCommit() error {
+	state, _ := loadState()
+
+	// Get the latest commit message
+	commitMsg := ""
+	if out, err := exec.Command("git", "log", "-1", "--pretty=%s").Output(); err == nil {
+		commitMsg = strings.TrimSpace(string(out))
+	}
+
+	// Auto-sync GitHub activity (replaces manual feed)
+	login, err := ghLogin()
+	if err == nil {
+		events, err := ghEvents(login)
+		if err == nil {
+			summary := summarize(events)
+			state.Activity = summary
+			state.Evolution = evolutionFor(summary)
+			state.Logic += summary.Commits + summary.MergedPRs*3
+			state.Kindness += summary.Reviews * 2
+		}
+	}
+
+	// Boost mood for this commit
+	state.Mood = min(100, state.Mood+3)
+	state.Logic += 1
+	state.LastSync = time.Now().UTC().Format(time.RFC3339)
+	state.Version = 1
+	if state.Evolution == "" || state.Evolution == "Lonely" {
+		state.Evolution = "Pioneer"
+	}
+
+	if err := saveState(state); err != nil {
+		return err
+	}
+
+	// Proactively display GitPet status with praise
+	fmt.Println()
+	fmt.Println(renderPostCommit(state, commitMsg))
+	return nil
+}
+
+func runInstallHook() error {
+	// Find the git root
+	out, err := exec.Command("git", "rev-parse", "--git-dir").Output()
+	if err != nil {
+		return fmt.Errorf("not a git repository")
+	}
+	gitDir := strings.TrimSpace(string(out))
+	hookDir := filepath.Join(gitDir, "hooks")
+	hookPath := filepath.Join(hookDir, "post-commit")
+
+	// Get the absolute path to gh-pet binary
+	exePath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("cannot find GitPet binary: %w", err)
+	}
+	exePath, _ = filepath.Abs(exePath)
+
+	hookContent := fmt.Sprintf(`#!/usr/bin/env bash
+# GitPet post-commit hook — auto-feed & show status
+"%s" post-commit 2>/dev/null &
+`, exePath)
+
+	if err := os.MkdirAll(hookDir, 0o755); err != nil {
+		return err
+	}
+
+	// Check if hook already exists
+	if data, err := os.ReadFile(hookPath); err == nil {
+		if strings.Contains(string(data), "GitPet") {
+			fmt.Printf("%s✓ GitPet hook already installed at %s%s\n", colorGreen, hookPath, colorReset)
+			return nil
+		}
+		// Append to existing hook
+		hookContent = string(data) + "\n" + hookContent
+	}
+
+	if err := os.WriteFile(hookPath, []byte(hookContent), 0o755); err != nil {
+		return err
+	}
+	fmt.Printf("%s✓ GitPet post-commit hook installed!%s\n", colorGreen, colorReset)
+	fmt.Printf("  → %s\n", hookPath)
+	fmt.Println("  GitPet will now auto-show after every commit 🐾")
+	return nil
+}
+
 func runStatus() error {
 	state, _ := loadState()
 	if state.Evolution == "" {
@@ -178,63 +277,187 @@ func runSuggest() error {
 }
 
 func renderStatus(state PetState) string {
-	tone := activityTone(state.Activity)
+	color := colorFor(state.Evolution)
 	art := renderArt(state)
-	lines := []string{
-		"GitPet Status",
-		fmt.Sprintf("Evolution: %s", state.Evolution),
-		fmt.Sprintf("Mood: %d | Kindness: %d | Logic Shards: %d", state.Mood, state.Kindness, state.Logic),
-		fmt.Sprintf("Last Sync: %s", displayTime(state.LastSync)),
-		fmt.Sprintf("Activity (7d): Commits %d, Merged PRs %d, Reviews %d, Docs/Comments %d", state.Activity.Commits, state.Activity.MergedPRs, state.Activity.Reviews, state.Activity.DocComments),
-		tone,
-		art,
+	moodBar := renderMoodBar(state.Mood)
+	face := moodFace(state.Mood)
+	tone := activityTone(state.Activity)
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("\n%s%s╭──────────────────────────────────╮%s\n", colorBold, color, colorReset))
+	sb.WriteString(fmt.Sprintf("%s│%s       🐾 GitPet Status           %s│%s\n", color, colorReset, color, colorReset))
+	sb.WriteString(fmt.Sprintf("%s├──────────────────────────────────┤%s\n", color, colorReset))
+	sb.WriteString(fmt.Sprintf("%s│%s  Evolution : %-20s%s│%s\n", color, colorReset, state.Evolution, color, colorReset))
+	sb.WriteString(fmt.Sprintf("%s│%s  Mood      : %s %s%s\n", color, colorReset, moodBar, face, colorReset))
+	sb.WriteString(fmt.Sprintf("%s│%s  Kindness  : %-5d  Shards: %-5d%s│%s\n", color, colorReset, state.Kindness, state.Logic, color, colorReset))
+	sb.WriteString(fmt.Sprintf("%s│%s  Synced    : %-20s%s│%s\n", color, colorReset, displayTime(state.LastSync), color, colorReset))
+	sb.WriteString(fmt.Sprintf("%s├──────────────────────────────────┤%s\n", color, colorReset))
+	sb.WriteString(fmt.Sprintf("%s│%s  7d: %dc %dp %dr %dd\n", color, colorReset,
+		state.Activity.Commits, state.Activity.MergedPRs, state.Activity.Reviews, state.Activity.DocComments))
+	sb.WriteString(fmt.Sprintf("%s├──────────────────────────────────┤%s\n", color, colorReset))
+	for _, line := range strings.Split(art, "\n") {
+		sb.WriteString(fmt.Sprintf("%s│%s  %s\n", color, colorReset, line))
 	}
-	return strings.Join(lines, "\n")
+	sb.WriteString(fmt.Sprintf("%s├──────────────────────────────────┤%s\n", color, colorReset))
+	sb.WriteString(fmt.Sprintf("%s│%s  %s\n", color, colorReset, tone))
+	sb.WriteString(fmt.Sprintf("%s╰──────────────────────────────────╯%s\n", color, colorReset))
+	return sb.String()
+}
+
+func renderPostCommit(state PetState, commitMsg string) string {
+	color := colorFor(state.Evolution)
+	art := renderArt(state)
+	praise := randomPraise()
+	face := moodFace(state.Mood)
+	moodBar := renderMoodBar(state.Mood)
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("%s%s╭──── 🐾 GitPet ─────────────────╮%s\n", colorBold, color, colorReset))
+	for _, line := range strings.Split(art, "\n") {
+		sb.WriteString(fmt.Sprintf("%s│%s  %s\n", color, colorReset, line))
+	}
+	sb.WriteString(fmt.Sprintf("%s│%s\n", color, colorReset))
+	sb.WriteString(fmt.Sprintf("%s│%s  %s %s\n", color, colorReset, face, praise))
+	sb.WriteString(fmt.Sprintf("%s│%s  Mood: %s  +3 ⬆\n", color, colorReset, moodBar))
+	if commitMsg != "" {
+		display := commitMsg
+		if len(display) > 28 {
+			display = display[:25] + "..."
+		}
+		sb.WriteString(fmt.Sprintf("%s│%s  📝 %s\n", color, colorReset, display))
+	}
+	sb.WriteString(fmt.Sprintf("%s╰──────────────────────────────────╯%s\n", color, colorReset))
+	return sb.String()
+}
+
+func renderMoodBar(mood int) string {
+	filled := mood / 10
+	if filled > 10 {
+		filled = 10
+	}
+	empty := 10 - filled
+	var color string
+	switch {
+	case mood >= 70:
+		color = colorGreen
+	case mood >= 40:
+		color = colorYellow
+	case mood > 0:
+		color = colorRed
+	default:
+		color = colorGrey
+	}
+	return fmt.Sprintf("%s%s%s%s", color, strings.Repeat("█", filled), colorDim+strings.Repeat("░", empty)+colorReset, colorReset)
+}
+
+func moodFace(mood int) string {
+	switch {
+	case mood >= 80:
+		return "ᕕ( ᐛ )ᕗ"
+	case mood >= 60:
+		return "(◕‿◕)"
+	case mood >= 40:
+		return "(•‿•)"
+	case mood >= 20:
+		return "(•_•)"
+	case mood > 0:
+		return "(._. )"
+	default:
+		return "(；_；)"
+	}
+}
+
+func randomPraise() string {
+	praises := []string{
+		"Nice commit! 🔥",
+		"You're on fire! 💪",
+		"Keep it up! ✨",
+		"Great work! 🌟",
+		"Awesome sauce! 🎉",
+		"You rock! 🤘",
+		"Legendary! ⚡",
+		"Brilliant! 💎",
+		"Ship it! 🚀",
+		"Code warrior! ⚔️",
+		"Well done! 🏆",
+		"Commit hero! 🦸",
+	}
+	return praises[rand.Intn(len(praises))]
 }
 
 func renderArt(state PetState) string {
-	if state.Evolution == "Lonely" {
-		return "(._.)\n /|\\\n / \\\nThe Cache is quiet..."
-	}
-	color := colorFor(state.Evolution)
-	reset := colorReset
-	halo := ""
-	if state.Kindness >= 2 {
-		halo = fmt.Sprintf("%s  _  %s\n", color, reset)
-	}
+	art := artFor(state.Evolution)
 	special := ""
 	if state.Evolution == "Pioneer" && rand.Intn(5) == 0 {
-		special = fmt.Sprintf("%sFound a tiny treasure chest!%s", color, reset)
+		special = "\n🗝️  Found a tiny treasure chest!"
 	}
 	if state.Evolution == "Guardian" {
-		special = fmt.Sprintf("%sShielding your logs: You got this.%s", color, reset)
+		special = "\n🛡️  Shielding your logs."
 	}
 	if state.Evolution == "Bard" {
-		special = fmt.Sprintf("%sProverb: %s%s", color, dailyProverb(), reset)
+		special = fmt.Sprintf("\n📜 %s", dailyProverb())
 	}
-	art := artFor(state.Evolution)
-	art = color + art + reset
-	if halo != "" {
-		art = halo + art
-	}
-	if special != "" {
-		return art + "\n" + special
-	}
-	return art
+	return art + special
 }
 
 func artFor(evolution string) string {
 	switch evolution {
 	case "Pioneer":
-		return " /-\\\n(o o)\n/|^|\\\n / \\\n  |"
+		return "" +
+			"    ╭───╮\n" +
+			"   (⊙ ⊙ )\n" +
+			"  ╭┤ ▽ ├╮  ⛏️\n" +
+			"  │╰───╯│\n" +
+			"  ╰┬───┬╯\n" +
+			"   │   │\n" +
+			"   ╰───╯"
 	case "Guardian":
-		return "[===]\n(o_o)\n/|=|\\\n / \\"
+		return "" +
+			"   ╔═══╗\n" +
+			"   ║ ⊕ ║\n" +
+			"  ╭╨───╨╮\n" +
+			"  (◉_◉ )\n" +
+			"  ├┤═══├┤ 🛡️\n" +
+			"  ╰┬───┬╯\n" +
+			"   │   │\n" +
+			"   ╰───╯"
 	case "Bard":
-		return " ~~~\n(o o)\n/|~|\\\n / \\\n (_)"
+		return "" +
+			"   ♪ ♫ ♪\n" +
+			"   ╭~~~╮\n" +
+			"  (◕ ◡ ◕)\n" +
+			"  ╭┤ ♪ ├╮  📜\n" +
+			"  │╰~~~╯│\n" +
+			"  ╰┬───┬╯\n" +
+			"   │   │\n" +
+			"   ╰─♪─╯"
 	case "Void":
-		return " . .\n( . )\n . ."
+		return "" +
+			"    · · ·\n" +
+			"   ╭─·─╮\n" +
+			"  ( ·_· )\n" +
+			"  ┤     ├\n" +
+			"   · · ·\n" +
+			"    ···"
+	case "Lonely":
+		return "" +
+			"   ╭───╮\n" +
+			"  (；_；)\n" +
+			"  ╭┤   ├╮\n" +
+			"  │╰───╯│\n" +
+			"  ╰┬───┬╯  💤\n" +
+			"   │   │\n" +
+			"   ╰───╯\n" +
+			"  zzz..."
 	default:
-		return "(o_o)\n /|\\\n / \\"
+		return "" +
+			"   ╭───╮\n" +
+			"  (o_o )\n" +
+			"  ╭┤   ├╮\n" +
+			"  │╰───╯│\n" +
+			"  ╰┬───┬╯\n" +
+			"   │   │\n" +
+			"   ╰───╯"
 	}
 }
 
