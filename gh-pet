@@ -2,8 +2,16 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
-BIN="$ROOT/gh-pet-bin"
 
+if [ "${1:-}" = "mcp" ]; then
+  MCP_BIN="$ROOT/gitpet-mcp"
+  if [ ! -x "$MCP_BIN" ] || [ "$ROOT/cmd/mcp/main.go" -nt "$MCP_BIN" ] || [ "$ROOT/go.mod" -nt "$MCP_BIN" ]; then
+    (cd "$ROOT" && go build -o "$MCP_BIN" ./cmd/mcp/)
+  fi
+  exec "$MCP_BIN"
+fi
+
+BIN="$ROOT/gh-pet-bin"
 if [ ! -x "$BIN" ] || [ "$ROOT/main.go" -nt "$BIN" ] || [ "$ROOT/go.mod" -nt "$BIN" ]; then
   (cd "$ROOT" && go build -o "$BIN")
 fi

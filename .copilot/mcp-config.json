@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "gitpet": {
+      "type": "stdio",
+      "command": "./gitpet-mcp"
+    }
+  }
+}
