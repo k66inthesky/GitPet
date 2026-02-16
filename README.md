@@ -1,4 +1,8 @@
-# GitPet (gh-pet)
+# GitPet (gh-pet)🐾
+<img width="1434" height="526" alt="截圖 2026-02-16 下午4 14 50" src="https://github.com/user-attachments/assets/6b830e7e-7ace-443c-b70c-2a605301aac1" />
+
+<img width="852" height="406" alt="截圖 2026-02-16 凌晨1 19 01" src="https://github.com/user-attachments/assets/aa14a19b-d6d9-4b3d-ae5a-95997dd97c90" />
+
 
 GitPet is a GitHub CLI extension that turns your GitHub activity into a digital companion living in the Cache.
 
